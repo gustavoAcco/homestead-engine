@@ -1,0 +1,27 @@
+PROJECT_NAME           = "homestead-engine"
+PROJECT_BRIEF          = "Integrated food production planning engine (Sisteminha-inspired)"
+PROJECT_NUMBER         = 0.1.0
+
+INPUT                  = include/
+RECURSIVE              = YES
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+SHOW_INCLUDE_FILES     = NO
+
+OUTPUT_DIRECTORY       = docs/
+HTML_OUTPUT            = html
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+
+FILE_PATTERNS          = *.hpp
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+
+SORT_MEMBER_DOCS       = YES
+SOURCE_BROWSER         = NO
+INLINE_SOURCES         = NO

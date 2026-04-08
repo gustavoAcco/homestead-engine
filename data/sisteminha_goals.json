@@ -1,0 +1,12 @@
+{
+  "goals": [
+    { "resource_slug": "broiler_meat_kg",  "quantity_per_month": 50  },
+    { "resource_slug": "egg",              "quantity_per_month": 200 },
+    { "resource_slug": "tilapia_whole_kg", "quantity_per_month": 30  },
+    { "resource_slug": "lettuce_head",     "quantity_per_month": 120 },
+    { "resource_slug": "tomato_kg",        "quantity_per_month": 40  },
+    { "resource_slug": "corn_grain_kg",    "quantity_per_month": 60  },
+    { "resource_slug": "bean_kg",          "quantity_per_month": 20  },
+    { "resource_slug": "banana_bunch_kg",  "quantity_per_month": 30  }
+  ]
+}
