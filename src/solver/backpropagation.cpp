@@ -26,25 +26,18 @@
 #include <unordered_set>
 #include <vector>
 
+#include "detail/pick.hpp"
+
 namespace homestead {
 
 // Defined in analytics.cpp.
 void populate_plan_result(PlanResult&, const std::vector<ProductionGoal>&, const Registry&,
                           const SolverConfig&);
 
-namespace {
+// Defined in scheduling.cpp.
+double cycles_in_month(const Lifecycle& lc, int month) noexcept;
 
-double pick(const VariableQuantity& q, Scenario s) noexcept {
-    switch (s) {
-        case Scenario::optimistic:
-            return q.min;
-        case Scenario::expected:
-            return q.expected;
-        case Scenario::pessimistic:
-            return q.max;
-    }
-    return q.expected;
-}
+namespace {
 
 /// Select the entity most likely to close loops.
 /// Returns the slug of the best candidate, or empty string if none found.
@@ -67,6 +60,7 @@ std::string select_entity_slug(const std::vector<std::string>& slugs, const Regi
 struct Demand {
     NodeId consumer_id;
     std::string resource_slug;
+    double quantity_per_month{0.0};  // scaled demand from consumer
 };
 
 /// Get or create an ExternalSourceNode for resource_slug; return its NodeId.
@@ -82,6 +76,17 @@ NodeId get_or_create_external(const std::string& resource_slug, Graph& g,
     NodeId src_id = g.add_external_source(esn);
     external_nodes[resource_slug] = src_id;
     return src_id;
+}
+
+/// Find the first active month in the lifecycle (walk from month 0).
+/// Returns -1 if no active month exists.
+int representative_month(const Lifecycle& lc) noexcept {
+    for (int m = 0; m < 12; ++m) {
+        if (is_active(lc.active_months, m)) {
+            return m;
+        }
+    }
+    return -1;
 }
 
 }  // anonymous namespace
@@ -103,6 +108,9 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
     std::unordered_map<std::string, NodeId> external_nodes;
     // Track which (consumer, resource) pairs we have already satisfied.
     std::unordered_set<std::string> satisfied_keys;  // "consumer_id:resource_slug"
+    // Solver-local accumulated demand per entity slug (slug → total monthly demand).
+    // Nodes are created once and never mutated — all quantity updates happen here.
+    std::unordered_map<std::string, double> entity_required_qty;
 
     double total_area = 0.0;
     double total_cost = 0.0;
@@ -126,7 +134,11 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
         sink.resource_slug = goal.resource_slug;
         sink.quantity_per_month = goal.quantity_per_month;
         NodeId sink_id = g.add_goal_sink(sink);
-        demands.push(Demand{sink_id, goal.resource_slug});
+        double qty_per_month = detail::pick(goal.quantity_per_month, config.scenario);
+        // Skip zero-quantity goals — goal sink is recorded but no demand propagated.
+        if (qty_per_month > 0.0) {
+            demands.push(Demand{sink_id, goal.resource_slug, qty_per_month});
+        }
     }
 
     // ── Step 2–4: Fixed-point backward expansion ───────────────────────────────
@@ -135,10 +147,13 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
             break;
         }
 
+        // Snapshot entity quantities for convergence detection.
+        std::unordered_map<std::string, double> prev_quantities = entity_required_qty;
+
         // Process all current demands.
         std::size_t processed = 0;
         while (!demands.empty()) {
-            auto [consumer_id, resource_slug] = demands.front();
+            auto [consumer_id, resource_slug, qty_per_month] = demands.front();
             demands.pop();
 
             std::string key = make_key(consumer_id, resource_slug);
@@ -165,7 +180,8 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
                 flow.from = src_id;
                 flow.to = consumer_id;
                 flow.resource_slug = resource_slug;
-                flow.quantity_per_cycle = VariableQuantity{1.0};
+                flow.quantity_per_cycle =
+                    VariableQuantity{qty_per_month > 0.0 ? qty_per_month : 1.0};
                 (void)g.add_flow(flow);
                 satisfied_keys.insert(key);
                 ++processed;
@@ -187,10 +203,43 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
             auto nit = entity_nodes.find(entity_slug_sel);
             if (nit != entity_nodes.end()) {
                 entity_id = nit->second;
+                // Accumulate demand and re-enqueue inputs if required quantity increases.
+                double old_total = entity_required_qty[entity_slug_sel];
+                entity_required_qty[entity_slug_sel] += qty_per_month;
+                double new_total = entity_required_qty[entity_slug_sel];
+
+                int rep_month_r = representative_month(entity_ref.lifecycle);
+                double output_per_month_r = 0.0;
+                if (rep_month_r >= 0) {
+                    auto out_it_r = std::ranges::find_if(
+                        entity_ref.outputs, [&resource_slug](const ResourceFlowSpec& o) {
+                            return o.resource_slug == resource_slug;
+                        });
+                    if (out_it_r != entity_ref.outputs.end()) {
+                        double cpm_r = cycles_in_month(entity_ref.lifecycle, rep_month_r);
+                        output_per_month_r =
+                            detail::pick(out_it_r->quantity_per_cycle, config.scenario) * cpm_r;
+                    }
+                }
+                if (output_per_month_r > 0.0) {
+                    double old_qty = std::ceil(old_total / output_per_month_r);
+                    double new_qty = std::ceil(new_total / output_per_month_r);
+                    if (new_qty > old_qty) {
+                        // Re-enqueue inputs with the incremental delta demand.
+                        double delta = new_qty - old_qty;
+                        double cpm_r = cycles_in_month(entity_ref.lifecycle, rep_month_r);
+                        for (const auto& inp : entity_ref.inputs) {
+                            double scaled_delta =
+                                detail::pick(inp.quantity_per_cycle, config.scenario) * delta *
+                                cpm_r;
+                            demands.push(Demand{entity_id, inp.resource_slug, scaled_delta});
+                        }
+                    }
+                }
             } else {
                 // Check constraints before allocating.
-                double area = pick(entity_ref.infrastructure.area_m2, config.scenario);
-                double cost = pick(entity_ref.infrastructure.initial_cost, config.scenario);
+                double area = detail::pick(entity_ref.infrastructure.area_m2, config.scenario);
+                double cost = detail::pick(entity_ref.infrastructure.initial_cost, config.scenario);
 
                 if (config.max_area_m2 && (total_area + area) > *config.max_area_m2) {
                     result.diagnostics.push_back(
@@ -205,7 +254,8 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
                     flow.from = src_id;
                     flow.to = consumer_id;
                     flow.resource_slug = resource_slug;
-                    flow.quantity_per_cycle = VariableQuantity{1.0};
+                    flow.quantity_per_cycle =
+                        VariableQuantity{qty_per_month > 0.0 ? qty_per_month : 1.0};
                     (void)g.add_flow(flow);
                     satisfied_keys.insert(key);
                     ++processed;
@@ -223,29 +273,66 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
                     flow.from = src_id;
                     flow.to = consumer_id;
                     flow.resource_slug = resource_slug;
-                    flow.quantity_per_cycle = VariableQuantity{1.0};
+                    flow.quantity_per_cycle =
+                        VariableQuantity{qty_per_month > 0.0 ? qty_per_month : 1.0};
                     (void)g.add_flow(flow);
                     satisfied_keys.insert(key);
                     ++processed;
                     continue;
                 }
 
+                // Compute required quantity from demand.
+                int rep_month = representative_month(entity_ref.lifecycle);
+                double output_per_month = 0.0;
+                if (rep_month >= 0) {
+                    auto out_it = std::ranges::find_if(entity_ref.outputs,
+                                                       [&resource_slug](const ResourceFlowSpec& o) {
+                                                           return o.resource_slug == resource_slug;
+                                                       });
+                    if (out_it != entity_ref.outputs.end()) {
+                        double cpm = cycles_in_month(entity_ref.lifecycle, rep_month);
+                        output_per_month =
+                            detail::pick(out_it->quantity_per_cycle, config.scenario) * cpm;
+                    }
+                }
+
+                if (output_per_month <= 0.0) {
+                    // Entity produces zero of this resource — fall through to external.
+                    NodeId src_id = get_or_create_external(resource_slug, g, external_nodes);
+                    ResourceFlow flow;
+                    flow.from = src_id;
+                    flow.to = consumer_id;
+                    flow.resource_slug = resource_slug;
+                    flow.quantity_per_cycle =
+                        VariableQuantity{qty_per_month > 0.0 ? qty_per_month : 1.0};
+                    (void)g.add_flow(flow);
+                    satisfied_keys.insert(key);
+                    ++processed;
+                    continue;
+                }
+
+                double required_qty = std::ceil(qty_per_month / output_per_month);
+
                 // Add new entity instance node.
                 EntityInstanceNode inst;
                 inst.instance_name = entity_slug_sel;
                 inst.entity_slug = entity_slug_sel;
-                inst.quantity = VariableQuantity{1.0};
+                inst.quantity = VariableQuantity{required_qty};
                 inst.schedule = entity_ref.lifecycle.active_months;
                 entity_id = g.add_entity_instance(inst);
                 entity_nodes[entity_slug_sel] = entity_id;
+                entity_required_qty[entity_slug_sel] = qty_per_month;
                 total_area += area;
                 total_cost += cost;
 
-                // Enqueue all of this entity's declared inputs.
+                // Enqueue all of this entity's declared inputs (scaled by quantity).
+                double cpm = cycles_in_month(entity_ref.lifecycle, rep_month >= 0 ? rep_month : 0);
                 for (const auto& inp : entity_ref.inputs) {
                     std::string inp_key = make_key(entity_id, inp.resource_slug);
                     if (!satisfied_keys.contains(inp_key)) {
-                        demands.push(Demand{entity_id, inp.resource_slug});
+                        double scaled = detail::pick(inp.quantity_per_cycle, config.scenario) *
+                                        required_qty * cpm;
+                        demands.push(Demand{entity_id, inp.resource_slug, scaled});
                     }
                 }
             }
@@ -261,7 +348,7 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
                                                        return o.resource_slug == resource_slug;
                                                    });
                 if (out_it != entity_ref.outputs.end()) {
-                    qty = pick(out_it->quantity_per_cycle, config.scenario);
+                    qty = detail::pick(out_it->quantity_per_cycle, config.scenario);
                 }
                 ResourceFlow flow;
                 flow.from = entity_id;
@@ -279,24 +366,26 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
             break;
         }
 
-        // Re-run unsatisfied_inputs as the Gauss-Seidel outer pass.
+        // Convergence check: quantities stable AND no unsatisfied inputs.
+        bool quantities_stable = (entity_required_qty == prev_quantities);
         auto remaining = g.unsatisfied_inputs(registry);
-        if (remaining.empty()) {
+        if (remaining.empty() && quantities_stable) {
             break;
         }
 
         for (const auto& [nid, slug] : remaining) {
             std::string key = make_key(nid, slug);
             if (!satisfied_keys.contains(key)) {
-                demands.push(Demand{nid, slug});
+                demands.push(Demand{nid, slug, 0.0});
             }
         }
 
-        if (iter == config.max_convergence_iterations - 1) {
-            result.diagnostics.push_back(Diagnostic{
-                DiagnosticKind::non_convergent_cycle,
-                std::format("Solver reached iteration cap ({})", config.max_convergence_iterations),
-                std::nullopt, std::nullopt});
+        if (iter >= config.max_quantity_iterations - 1) {
+            result.diagnostics.push_back(
+                Diagnostic{DiagnosticKind::non_convergent_cycle,
+                           std::format("Solver reached quantity iteration cap ({})",
+                                       config.max_quantity_iterations),
+                           std::nullopt, std::nullopt});
         }
     }
 

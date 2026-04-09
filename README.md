@@ -75,27 +75,148 @@ int main() {
     // Solve.
     auto plan = homestead::solve(goals, registry, config);
 
-    std::cout << "Loop closure: " << plan.loop_closure_score * 100 << " %\n";
+    // Inspect entity quantities.
+    plan.graph.for_each_node([](homestead::NodeId, const homestead::NodeVariant& v) {
+        if (auto* inst = std::get_if<homestead::EntityInstanceNode>(&v)) {
+            std::cout << inst->entity_slug << ": " << inst->quantity.expected << " instances\n";
+        }
+    });
+
+    std::cout << "Area:          " << plan.bom.total_area_m2        << " m²\n";
+    std::cout << "Setup cost:    " << plan.bom.estimated_initial_cost << " BRL\n";
+    std::cout << "Loop closure:  " << plan.loop_closure_score * 100  << " %\n";
+
     for (const auto& d : plan.diagnostics)
         std::cout << "[" << homestead::to_string(d.kind) << "] " << d.message << "\n";
 }
 ```
 
+**Example output** (50 kg broiler meat + 200 eggs, unconstrained):
+
+```
+broiler_chicken: 50 instances
+laying_hen: 8 instances
+loop closure:  5.8 %
+```
+
+The loop closure score is low because most inputs (feed, water, labour) have no
+internal producer in the default registry and fall to external sources. It rises
+as you add more of the closed-loop modules (compost, biodigester, water tank).
+
+## Solver config
+
+```cpp
+homestead::SolverConfig config;
+config.scenario                  = homestead::Scenario::expected;  // optimistic | expected | pessimistic
+config.max_area_m2               = 500.0;   // optional hard cap (m²)
+config.max_budget                = 8000.0;  // optional hard cap (BRL)
+config.max_labor_hours_per_month = 40.0;    // optional hard cap (h/month)
+config.max_convergence_iterations = 100;    // Gauss-Seidel topology cap
+config.max_quantity_iterations    = 50;     // quantity fixed-point cap
+```
+
+`Scenario` selects which point of every `VariableQuantity{min, expected, max}` triple
+the solver uses for its calculations. All three scenario points are stored in the result
+graph so callers can report pessimistic/expected/optimistic ranges from a single solve.
+
+## Plan result
+
+`homestead::PlanResult` contains everything produced by one solver run:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `graph` | `Graph` | Fully resolved resource-flow graph. Nodes: entity instances, external sources, goal sinks. Edges: `ResourceFlow` values. |
+| `balance_sheet` | `vector<ResourceBalance>` | Per-resource monthly production, consumption, and external purchase across all 12 months. |
+| `gap_report` | `vector<ResourceBalance>` | Subset of `balance_sheet` where a resource has unmet internal demand (purchased externally). |
+| `labor_schedule` | `MonthlyValues` | Total operating labour hours per month across all entity instances. |
+| `bom` | `InfrastructureBOM` | Total area (m²), estimated setup cost, setup labour, and construction materials. |
+| `loop_closure_score` | `double ∈ [0,1]` | Fraction of total resource demand met internally. 1.0 = fully self-sufficient. |
+| `diagnostics` | `vector<Diagnostic>` | Solver messages. Empty implies all goals fully satisfied. |
+
+### Diagnostic kinds
+
+| Kind | Meaning |
+|------|---------|
+| `missing_producer` | No registry entity produces a required resource — routed to external source |
+| `area_exceeded` | An entity was skipped because it would breach `max_area_m2` |
+| `unsatisfied_goal` | A goal cannot be met due to budget constraint or no producer |
+| `non_convergent_cycle` | Quantity fixed-point did not converge within `max_quantity_iterations` |
+| `seasonality_gap` | A goal resource is unavailable in one or more months of the year |
+
+### Traversing the graph
+
+```cpp
+// Iterate every node regardless of type.
+plan.graph.for_each_node([](homestead::NodeId id, const homestead::NodeVariant& v) {
+    std::visit([](const auto& node) {
+        using T = std::decay_t<decltype(node)>;
+        if constexpr (std::is_same_v<T, homestead::EntityInstanceNode>)
+            std::cout << node.entity_slug << " x" << node.quantity.expected << "\n";
+    }, v);
+});
+
+// Predecessor/successor traversal.
+auto preds = plan.graph.predecessors(node_id);
+auto succs = plan.graph.successors(node_id);
+```
+
+`EntityInstanceNode::quantity` is a `VariableQuantity{N, N, N}` triple where `N` is the
+ceiling of `(monthly_demand / output_per_month_per_instance)` — computed automatically
+by the solver; never hardcoded to 1.
+
+## CLI
+
+The optional CLI harness is built when `HOMESTEAD_BUILD_CLI=ON` (it is on by default in
+the debug preset). It is a thin wrapper around the library — not part of the public API.
+
+```bash
+# Solve using the built-in registry and a goals file.
+homestead_cli --defaults --goals data/sisteminha_goals.json --output plan.json
+
+# Solve using a custom registry file.
+homestead_cli --scenario registry.json --goals goals.json --output plan.json
+
+# Export the default registry to JSON for inspection or customisation.
+homestead_cli --dump-defaults --output registry.json
+```
+
+The output `plan.json` is a versioned JSON document (schema `"type": "plan_result"`,
+`"version": "1.0.0"`) readable by `homestead::serialization::plan_from_json`.
+
+## Data files
+
+| File | Description |
+|------|-------------|
+| `data/default_registry.json` | Serialised form of the built-in registry. 20 entities and 38 resources modelling a tropical mixed-farming system (broiler chickens, laying hens, quail, tilapia, goats, vegetable beds, fruit trees, compost, earthworm bin, biodigester, water infrastructure). Produced by `homestead_cli --dump-defaults`. |
+| `data/sisteminha_goals.json` | Example goal set for a Sisteminha-scale homestead: 8 food goals ranging from 20 to 200 units/month. Pass to `--goals`. |
+
 ## Library targets
 
 | Target | Purpose | External dependencies |
 |--------|---------|----------------------|
-| `homestead::core` | Domain model (Resource, Entity, Registry, quantities) | stdlib only |
-| `homestead::graph` | Directed resource-flow graph, cycle detection | core |
-| `homestead::solver` | Backpropagation planner, scheduling, analytics | core, graph |
+| `homestead::core` | Domain model: `Resource`, `Entity`, `Registry`, `VariableQuantity`, `Lifecycle`, `MonthMask` | stdlib only |
+| `homestead::graph` | Directed resource-flow graph, cycle detection, `for_each_node` traversal | core |
+| `homestead::solver` | Backpropagation planner, quantity scaling, scheduling, analytics | core, graph |
 | `homestead::serialization` | JSON import/export, schema versioning | core, nlohmann/json |
 | `homestead_cli` | Minimal CLI harness (opt-in via `HOMESTEAD_BUILD_CLI=ON`) | all above |
+
+## How the solver works
+
+1. **Seed**: a `GoalSinkNode` is created for each production goal and seeded into the demand queue with `quantity_per_month = pick(goal.quantity_per_month, scenario)`.
+2. **Expand**: for each demand, find a registry producer. Compute the required number of instances: `ceil(demand_per_month / (output_per_cycle × cycles_in_month))`. Add an `EntityInstanceNode` with that quantity, connect it, and enqueue all of its declared inputs scaled by the instance count.
+3. **Reuse**: if an entity node already exists, accumulate the new demand and re-enqueue its inputs with the incremental delta if the required quantity grew.
+4. **Converge**: after processing all demands, recheck `unsatisfied_inputs()`. Repeat (Gauss-Seidel outer loop) until stable or the iteration cap is reached. This correctly handles circular dependencies such as `chicken → manure → compost → crops → feed → chicken`.
+5. **Analyse**: compute balance sheet, BOM, labour schedule, and loop closure score from the resolved graph.
+
+All quantities use a `(min, expected, max)` triple throughout. The solver operates on
+one scenario point at a time; the full triple is preserved in the output.
 
 ## Architecture principles
 
 - Value semantics throughout — no raw `new`/`delete`
-- `std::expected<T,E>` for error handling; no exceptions in the solver
-- Circular dependencies (chicken manure → compost → corn → feed → chicken) are
-  handled by Gauss-Seidel fixed-point convergence, not assumed away
-- All quantities use a `(min, expected, max)` triple
+- `std::expected<T,E>` for error handling; no exceptions in the solver hot path
+- Concepts constrain all templates; ranges/views used where they simplify code
+- Circular dependencies handled by Gauss-Seidel fixed-point convergence, not assumed away
+- All quantities use a `(min, expected, max)` triple; never a single scalar
 - JSON schemas include a `"version"` field; breaking changes require a MAJOR bump
+- `homestead::core` has zero external dependencies — only the C++ standard library
