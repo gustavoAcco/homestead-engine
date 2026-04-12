@@ -25,11 +25,22 @@ struct SchemaVersion {
     }
 
     bool operator==(const SchemaVersion&) const = default;
+
+    /// Lexicographic ordering: major, then minor, then patch.
+    [[nodiscard]] bool operator<(const SchemaVersion& o) const noexcept {
+        if (major != o.major) {
+            return major < o.major;
+        }
+        if (minor != o.minor) {
+            return minor < o.minor;
+        }
+        return patch < o.patch;
+    }
 };
 
 /// Current schema versions for each document type.
 inline constexpr SchemaVersion REGISTRY_SCHEMA_VERSION{1, 0, 0};
 inline constexpr SchemaVersion GRAPH_SCHEMA_VERSION{1, 0, 0};
-inline constexpr SchemaVersion PLAN_SCHEMA_VERSION{1, 0, 0};
+inline constexpr SchemaVersion PLAN_SCHEMA_VERSION{1, 1, 0};
 
 }  // namespace homestead

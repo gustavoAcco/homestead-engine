@@ -7,6 +7,7 @@ add_executable(test_solver
     test_properties.cpp
     test_quickstart.cpp
     test_quantity_scaling.cpp
+    test_nutrient_balance.cpp
 )
 
 target_compile_features(test_solver PRIVATE cxx_std_23)
@@ -14,8 +15,10 @@ target_compile_features(test_solver PRIVATE cxx_std_23)
 target_link_libraries(test_solver
     PRIVATE
         homestead::solver
+        homestead::serialization
         homestead::core
         homestead::graph
+        nlohmann_json::nlohmann_json
         Catch2::Catch2WithMain
 )
 

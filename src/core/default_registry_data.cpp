@@ -438,7 +438,9 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{0.5},
-                                       VariableQuantity{5.0, 10.0, 20.0}}});
+                                       VariableQuantity{5.0, 10.0, 20.0}},
+                    // Nutrient demand — Embrapa Hortaliças, Circular Técnica 40
+                    NutrientDemand{10.0, 4.0, 8.0}});
 
     // tomato_bed_1m2 — 90-day cycle
     reg_entity(
@@ -459,7 +461,9 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{1.0},
-                                       VariableQuantity{10.0, 15.0, 25.0}}});
+                                       VariableQuantity{10.0, 15.0, 25.0}},
+                    // Nutrient demand — Embrapa Hortaliças, Circular Técnica 57
+                    NutrientDemand{15.0, 6.0, 12.0}});
 
     // pepper_bed_1m2 — 75-day cycle
     reg_entity(
@@ -480,7 +484,9 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{1.0},
-                                       VariableQuantity{8.0, 12.0, 20.0}}});
+                                       VariableQuantity{8.0, 12.0, 20.0}},
+                    // Nutrient demand — Embrapa Hortaliças, Circular Técnica 27
+                    NutrientDemand{12.0, 5.0, 10.0}});
 
     // corn_plot_1m2 — 120-day cycle
     reg_entity(
@@ -502,7 +508,9 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{0.5},
-                                       VariableQuantity{2.0, 5.0, 10.0}}});
+                                       VariableQuantity{2.0, 5.0, 10.0}},
+                    // Nutrient demand — Embrapa Milho e Sorgo, Circular Técnica 78
+                    NutrientDemand{8.0, 3.0, 6.0}});
 
     // bean_plot_1m2 — 90-day cycle
     reg_entity(
@@ -523,7 +531,10 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{0.3},
-                                       VariableQuantity{2.0, 3.0, 5.0}}});
+                                       VariableQuantity{2.0, 3.0, 5.0}},
+                    // Nutrient demand — Embrapa Arroz e Feijão, Circular Técnica 19
+                    // N lower than typical due to biological nitrogen fixation (BNF)
+                    NutrientDemand{4.0, 3.0, 5.0}});
 
     // cassava_plot_1m2 — 365-day cycle (annual)
     reg_entity(
@@ -545,7 +556,15 @@ void build_default_registry(Registry& reg) {
                     InfrastructureSpec{VariableQuantity{1.0, 1.0, 1.0},
                                        {},
                                        VariableQuantity{0.5},
-                                       VariableQuantity{2.0, 3.0, 5.0}}});
+                                       VariableQuantity{2.0, 3.0, 5.0}},
+                    // Nutrient demand — Embrapa Mandioca e Fruticultura, Circular Técnica 12
+                    // High K demand characteristic of cassava (K-hungry crop)
+                    NutrientDemand{5.0, 2.0, 8.0}});
+
+    // TODO (future feature): add NutrientDemand for per-plant entities below.
+    // banana_plant, papaya_plant, and acerola_plant use per-plant quantity models
+    // (not per-m²), so the _per_m2_per_cycle fields do not apply. A future feature
+    // will introduce NutrientDemand variants with _per_unit fields for non-area entities.
 
     // banana_plant — 365-day first cycle, then ratoon
     reg_entity(

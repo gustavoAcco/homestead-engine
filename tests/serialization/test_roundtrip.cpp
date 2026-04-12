@@ -108,3 +108,110 @@ TEST_CASE("PlanResult round-trip: balance sheet values identical after deseriali
     REQUIRE(restored->balance_sheet.size() == original.balance_sheet.size());
     REQUIRE(restored->diagnostics.size() == original.diagnostics.size());
 }
+
+// ── NutrientDemand round-trip (T024) ──────────────────────────────────────────
+
+TEST_CASE("Entity nutrient_demand round-trip: set value preserved",
+          "[serialization][roundtrip][nutrient]") {
+    Registry reg;
+
+    Resource r;
+    r.slug = "crop_out_kg";
+    r.name = "Crop Output";
+    r.category = ResourceCategory::food_product;
+    r.physical = PhysicalProperties{1.0, 0.0, 14};
+    (void)reg.register_resource(r);
+
+    Entity e;
+    e.slug = "test_crop";
+    e.name = "Test Crop";
+    e.lifecycle = Lifecycle{0, 30, 12.0, ALL_MONTHS};
+    e.outputs = {ResourceFlowSpec{"crop_out_kg", VariableQuantity{1.0}, 1.0}};
+    e.infrastructure.area_m2 = VariableQuantity{1.0};
+    e.nutrient_demand = NutrientDemand{10.0, 4.0, 8.0};
+    (void)reg.register_entity(e);
+
+    auto j = to_json(reg);
+    auto restored = registry_from_json(j);
+    REQUIRE(restored.has_value());
+
+    auto crop = restored->find_entity("test_crop");
+    REQUIRE(crop.has_value());
+    REQUIRE(crop->nutrient_demand.has_value());
+    REQUIRE(crop->nutrient_demand->n_g_per_m2_per_cycle == 10.0);
+    REQUIRE(crop->nutrient_demand->p_g_per_m2_per_cycle == 4.0);
+    REQUIRE(crop->nutrient_demand->k_g_per_m2_per_cycle == 8.0);
+}
+
+TEST_CASE("Entity nutrient_demand round-trip: nullopt not serialized",
+          "[serialization][roundtrip][nutrient]") {
+    Registry reg;
+
+    Resource r;
+    r.slug = "out_kg";
+    r.name = "Output";
+    r.category = ResourceCategory::other;
+    r.physical = PhysicalProperties{1.0, 0.0, -1};
+    (void)reg.register_resource(r);
+
+    Entity e;
+    e.slug = "non_crop";
+    e.name = "Non-crop Entity";
+    e.lifecycle = Lifecycle{0, 30, 12.0, ALL_MONTHS};
+    e.outputs = {ResourceFlowSpec{"out_kg", VariableQuantity{1.0}, 1.0}};
+    e.infrastructure.area_m2 = VariableQuantity{1.0};
+    // nutrient_demand left as nullopt
+    (void)reg.register_entity(e);
+
+    auto j = to_json(reg);
+
+    // Verify no nutrient_demand key in the serialized entity JSON.
+    const auto& entities = j["data"]["entities"];
+    bool found_key = false;
+    for (const auto& ej : entities) {
+        if (ej["slug"] == "non_crop" && ej.contains("nutrient_demand")) {
+            found_key = true;
+        }
+    }
+    REQUIRE_FALSE(found_key);
+
+    // Also verify deserialization restores nullopt.
+    auto restored = registry_from_json(j);
+    REQUIRE(restored.has_value());
+    auto nc = restored->find_entity("non_crop");
+    REQUIRE(nc.has_value());
+    REQUIRE_FALSE(nc->nutrient_demand.has_value());
+}
+
+// ── PlanResult::nutrient_balance round-trip (T025) ────────────────────────────
+
+TEST_CASE("PlanResult nutrient_balance round-trip: non-trivial values lossless",
+          "[serialization][roundtrip][nutrient]") {
+    PlanResult plan;
+    NutrientBalance nb;
+    for (int m = 0; m < 12; ++m) {
+        nb.available_n[m] = 50.0 + m * 3.7;
+        nb.available_p[m] = 20.0 + m * 1.3;
+        nb.available_k[m] = 40.0 + m * 2.1;
+        nb.demanded_n[m] = 30.0 + m * 4.5;
+        nb.demanded_p[m] = 10.0 + m * 0.9;
+        nb.demanded_k[m] = 25.0 + m * 1.7;
+    }
+    plan.nutrient_balance = nb;
+
+    auto j = to_json(plan);
+    auto restored = plan_from_json(j);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->nutrient_balance.has_value());
+
+    const auto& rnb = *restored->nutrient_balance;
+    for (int m = 0; m < 12; ++m) {
+        INFO("month " << m);
+        REQUIRE(rnb.available_n[m] == nb.available_n[m]);
+        REQUIRE(rnb.available_p[m] == nb.available_p[m]);
+        REQUIRE(rnb.available_k[m] == nb.available_k[m]);
+        REQUIRE(rnb.demanded_n[m] == nb.demanded_n[m]);
+        REQUIRE(rnb.demanded_p[m] == nb.demanded_p[m]);
+        REQUIRE(rnb.demanded_k[m] == nb.demanded_k[m]);
+    }
+}
