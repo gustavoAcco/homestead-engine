@@ -9,7 +9,7 @@
 
 using namespace homestead;
 
-TEST_CASE("Quickstart example: chicken + eggs with 200 m² constraint", "[solver][quickstart]") {
+TEST_CASE("Quickstart example: chicken + eggs with 200 m2 constraint", "[solver][quickstart]") {
     Registry reg = Registry::load_defaults();
 
     std::vector<ProductionGoal> goals = {
