@@ -35,11 +35,24 @@ enum class DiagnosticKind {
     area_exceeded,         ///< Plan exceeds max_area_m2 constraint
     non_convergent_cycle,  ///< Fixed-point did not converge within iteration limit
     missing_producer,      ///< No registry entity produces a required resource
-    seasonality_gap        ///< Goal resource unavailable in one or more goal months
+    seasonality_gap,       ///< Goal resource unavailable in one or more goal months
+    nutrient_deficit       ///< N, P, or K demand exceeds available supply in a month
 };
 
 /// Returns a human-readable label for a DiagnosticKind.
 [[nodiscard]] std::string to_string(DiagnosticKind kind);
+
+/// Monthly N-P-K supply and demand for a solved plan.
+/// All values in grams of element per month.
+/// Index 0 = January, index 11 = December.
+struct NutrientBalance {
+    MonthlyValues available_n{};  ///< Grams N supplied (net fertilizer output)
+    MonthlyValues available_p{};  ///< Grams P supplied
+    MonthlyValues available_k{};  ///< Grams K supplied
+    MonthlyValues demanded_n{};   ///< Grams N demanded by crop entities
+    MonthlyValues demanded_p{};   ///< Grams P demanded
+    MonthlyValues demanded_k{};   ///< Grams K demanded
+};
 
 /// A single solver diagnostic entry.
 struct Diagnostic {
@@ -81,6 +94,9 @@ struct PlanResult {
     double loop_closure_score{};
     /// Solver messages. Empty implies all goals were fully satisfied.
     std::vector<Diagnostic> diagnostics;
+    /// Nutrient supply/demand balance. nullopt when no crop entity instances
+    /// are present in the solved graph (nothing to balance).
+    std::optional<NutrientBalance> nutrient_balance;
 };
 
 }  // namespace homestead

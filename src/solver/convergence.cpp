@@ -7,6 +7,7 @@
 
 #include <array>
 #include <format>
+#include <optional>
 
 namespace homestead {
 
@@ -67,6 +68,47 @@ void check_labor_constraint(const MonthlyValues& labor_schedule, double max_labo
                 Diagnostic{DiagnosticKind::unsatisfied_goal,
                            std::format("Labor constraint exceeded in {}: {:.1f} h > {:.1f} h limit",
                                        month_names[m], labor_schedule[m], max_labor_per_month),
+                           std::nullopt, std::nullopt});
+        }
+    }
+}
+
+/// Append DiagnosticKind::nutrient_deficit entries for every element-month
+/// combination where demanded nutrient exceeds available supply.
+/// One diagnostic per element-month (no duplicates). (FR-004)
+void check_nutrient_deficits(const std::optional<NutrientBalance>& balance,
+                             std::vector<Diagnostic>& diagnostics) {
+    if (!balance) {
+        return;
+    }
+
+    static constexpr std::array<const char*, 12> month_names = {
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+    struct ElementView {
+        const char* name;
+        const MonthlyValues& available;
+        const MonthlyValues& demanded;
+    };
+
+    const std::array views{
+        ElementView{"Nitrogen", balance->available_n, balance->demanded_n},
+        ElementView{"Phosphorus", balance->available_p, balance->demanded_p},
+        ElementView{"Potassium", balance->available_k, balance->demanded_k},
+    };
+
+    for (const auto& [elem, avail, demand] : views) {
+        for (int m = 0; m < 12; ++m) {
+            if (demand[m] <= avail[m]) {
+                continue;
+            }
+            double shortfall = demand[m] - avail[m];
+            diagnostics.push_back(
+                Diagnostic{DiagnosticKind::nutrient_deficit,
+                           std::format("{} deficit in {}: {:.1f} g available vs {:.1f} g demanded "
+                                       "(shortfall: {:.1f} g)",
+                                       elem, month_names[static_cast<std::size_t>(m)], avail[m],
+                                       demand[m], shortfall),
                            std::nullopt, std::nullopt});
         }
     }

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <homestead/core/nutrient.hpp>
 #include <homestead/core/quantity.hpp>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,6 +64,9 @@ struct Entity {
     VariableQuantity stocking_density;
     /// Infrastructure requirements.
     InfrastructureSpec infrastructure;
+    /// Nutrient demand per m² per cycle. Present only for area-based crop entities.
+    /// Non-crop entities (animals, composters, fish tanks) leave this as nullopt.
+    std::optional<NutrientDemand> nutrient_demand;
 };
 
 }  // namespace homestead
