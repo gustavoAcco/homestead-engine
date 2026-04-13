@@ -6,6 +6,7 @@ add_executable(test_solver
     test_analytics.cpp
     test_properties.cpp
     test_quickstart.cpp
+    test_quantity_scaling.cpp
 )
 
 target_compile_features(test_solver PRIVATE cxx_std_23)

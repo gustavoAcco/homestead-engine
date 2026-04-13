@@ -29,18 +29,14 @@ TEST_CASE("Single goal: tilapia_whole_kg produces a plan with entity instance",
 
     // Find the tilapia tank entity instance.
     bool has_tilapia = false;
-    for (NodeId nid = 0; nid < result.graph.node_count() + 100; ++nid) {
-        auto n = result.graph.get_node(nid);
-        if (!n)
-            continue;
-        if (std::holds_alternative<EntityInstanceNode>(*n)) {
-            const auto& inst = std::get<EntityInstanceNode>(*n);
+    result.graph.for_each_node([&](NodeId /*id*/, const NodeVariant& v) {
+        if (std::holds_alternative<EntityInstanceNode>(v)) {
+            const auto& inst = std::get<EntityInstanceNode>(v);
             if (inst.entity_slug == "tilapia_tank_5000l") {
                 has_tilapia = true;
-                break;
             }
         }
-    }
+    });
     REQUIRE(has_tilapia);
 }
 

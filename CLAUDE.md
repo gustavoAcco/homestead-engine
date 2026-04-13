@@ -72,6 +72,8 @@ Read these files when relevant to your current task:
 ## Active Technologies
 - C++23 (std::expected, concepts, ranges, std::span) + nlohmann/json 3.11+, Catch2 v3.6+, spdlog 1.13+ (optional) (001-homestead-engine-core)
 - JSON files for Registry and PlanResult persistence; no database (001-homestead-engine-core)
+- C++23 (GCC 13+, Clang 17+, MSVC latest) + nlohmann/json 3.11+, Catch2 v3.6+ (testing), spdlog 1.13+ (optional logging) — all via FetchContent (002-quantity-scaling-solver)
+- N/A (in-memory graph; no persistence changes in this feature) (002-quantity-scaling-solver)
 
 ## Recent Changes
 - 001-homestead-engine-core: Added C++23 (std::expected, concepts, ranges, std::span) + nlohmann/json 3.11+, Catch2 v3.6+, spdlog 1.13+ (optional)

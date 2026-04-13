@@ -19,9 +19,9 @@ jobs:
             cc: gcc-13
             cxx: g++-13
           - os: ubuntu-latest
-            compiler: Clang-17
-            cc: clang-17
-            cxx: clang++-17
+            compiler: Clang-18
+            cc: clang-18
+            cxx: clang++-18
           - os: windows-latest
             compiler: MSVC-latest
             cc: ""
@@ -36,22 +36,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-13 g++-13 ninja-build
 
-      - name: Install Clang 17 (Ubuntu)
-        if: matrix.compiler == 'Clang-17'
+      - name: Install Clang 18 (Ubuntu)
+        if: matrix.compiler == 'Clang-18'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-17 ninja-build
+          sudo apt-get install -y clang-18 libc++-18-dev libc++abi-18-dev ninja-build
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         run: choco install ninja
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure (Unix, GCC)
+        if: matrix.compiler == 'GCC-13'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: cmake --preset debug
+
+      - name: Configure (Unix, Clang)
+        if: matrix.compiler == 'Clang-18'
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake --preset debug -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++"
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'

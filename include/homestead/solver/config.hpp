@@ -26,6 +26,9 @@ struct SolverConfig {
     std::optional<double> max_labor_hours_per_month;
     /// Maximum Gauss-Seidel iterations before declaring non-convergence.
     int max_convergence_iterations{100};
+    /// Maximum fixed-point iterations for quantity convergence (distinct from
+    /// topology convergence). Defaults to 50.
+    int max_quantity_iterations{50};
 };
 
 /// A single desired output from the homestead plan.

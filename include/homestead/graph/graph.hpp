@@ -4,6 +4,7 @@
 #include <homestead/graph/edge.hpp>
 #include <homestead/graph/node.hpp>
 
+#include <concepts>
 #include <expected>
 #include <optional>
 #include <span>
@@ -86,6 +87,18 @@ class Graph {
     /// incoming ResourceFlow edge.  Returns (node_id, resource_slug) pairs.
     [[nodiscard]] std::vector<std::pair<NodeId, std::string>> unsatisfied_inputs(
         const Registry& registry) const;
+
+    // ── Traversal (typed) ──────────────────────────────────────────────────────
+
+    /// Invokes fn(NodeId, const NodeVariant&) for every valid node in the graph.
+    /// Iteration order is unspecified.  Safe after any sequence of remove_node()
+    /// calls — unlike linear-scan patterns, no ID gaps are skipped or missed.
+    template <std::invocable<NodeId, const NodeVariant&> Callable>
+    void for_each_node(Callable&& fn) const {
+        for (const auto& [id, node] : nodes_) {
+            std::forward<Callable>(fn)(id, node);
+        }
+    }
 
     // ── Metrics ────────────────────────────────────────────────────────────────
 
