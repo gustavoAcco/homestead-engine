@@ -55,7 +55,7 @@ static Registry make_test_registry(const Resource& res, const Entity& ent) {
 //
 //   Expected diagnostics: 12× Phosphorus deficit + 12× Potassium deficit, 0× Nitrogen
 
-TEST_CASE("Sisteminha integration: bean + tilapia — P and K deficits, N surplus",
+TEST_CASE("Sisteminha integration: bean + tilapia - P and K deficits, N surplus",
           "[solver][nutrient][integration]") {
     Registry reg = Registry::load_defaults();
 
