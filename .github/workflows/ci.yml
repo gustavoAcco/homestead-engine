@@ -40,18 +40,25 @@ jobs:
         if: matrix.compiler == 'Clang-18'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 ninja-build
+          sudo apt-get install -y clang-18 libc++-18-dev libc++abi-18-dev ninja-build
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         run: choco install ninja
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure (Unix, GCC)
+        if: matrix.compiler == 'GCC-13'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: cmake --preset debug
+
+      - name: Configure (Unix, Clang)
+        if: matrix.compiler == 'Clang-18'
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake --preset debug -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++"
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
