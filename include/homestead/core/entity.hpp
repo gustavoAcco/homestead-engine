@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace homestead {
@@ -67,6 +68,21 @@ struct Entity {
     /// Nutrient demand per m² per cycle. Present only for area-based crop entities.
     /// Non-crop entities (animals, composters, fish tanks) leave this as nullopt.
     std::optional<NutrientDemand> nutrient_demand;
+
+    /// Nutritional or chemical amounts this entity needs per cycle, without naming a
+    /// specific resource slug. Keys use canonical gram-per-unit names: "protein_g",
+    /// "energy_kcal", "N_g", "P_g", "K_g". The solver's composition-matching pass
+    /// routes available resources to satisfy these needs (FR-001, FR-003).
+    /// Empty map = no composition-based feed requirements (slug-only entity).
+    /// Invariant: all values > 0.0.
+    std::unordered_map<std::string, double> composition_requirements;
+
+    /// Fertilization need per square metre of planted area per cycle.
+    /// Keys: "N_g", "P_g", "K_g" (grams per m² per cycle).
+    /// Scaled at solve time by infrastructure.area_m2 × instance_count × cpm (FR-002).
+    /// Empty map = no composition-based fertilization requirements.
+    /// Invariant: all values > 0.0.
+    std::unordered_map<std::string, double> fertilization_per_m2;
 };
 
 }  // namespace homestead

@@ -61,17 +61,52 @@ std::expected<void, RegistryError> Registry::register_entity(Entity entity) {
     for (const auto& flow : entity.inputs) {
         if (auto err = validate_slug(flow.resource_slug); !err) {
             return err;
-}
+        }
     }
     for (const auto& flow : entity.outputs) {
         if (auto err = validate_slug(flow.resource_slug); !err) {
             return err;
-}
+        }
     }
     for (const auto& flow : entity.infrastructure.construction_materials) {
         if (auto err = validate_slug(flow.resource_slug); !err) {
             return err;
-}
+        }
+    }
+
+    // Validate composition_requirements: non-empty keys, positive values.
+    for (const auto& [key, val] : entity.composition_requirements) {
+        if (key.empty()) {
+            return std::unexpected(RegistryError{
+                RegistryErrorKind::invalid_quantity,
+                std::format("Entity '{}': composition_requirements key must be non-empty",
+                            entity.slug),
+                entity.slug});
+        }
+        if (val <= 0.0) {
+            return std::unexpected(RegistryError{
+                RegistryErrorKind::invalid_quantity,
+                std::format("Entity '{}': composition_requirements['{}'] must be > 0, got {}",
+                            entity.slug, key, val),
+                entity.slug});
+        }
+    }
+
+    // Validate fertilization_per_m2: non-empty keys, positive values.
+    for (const auto& [key, val] : entity.fertilization_per_m2) {
+        if (key.empty()) {
+            return std::unexpected(RegistryError{
+                RegistryErrorKind::invalid_quantity,
+                std::format("Entity '{}': fertilization_per_m2 key must be non-empty", entity.slug),
+                entity.slug});
+        }
+        if (val <= 0.0) {
+            return std::unexpected(RegistryError{
+                RegistryErrorKind::invalid_quantity,
+                std::format("Entity '{}': fertilization_per_m2['{}'] must be > 0, got {}",
+                            entity.slug, key, val),
+                entity.slug});
+        }
     }
 
     // Override semantics.
@@ -88,7 +123,7 @@ std::optional<Resource> Registry::find_resource(std::string_view slug) const {
         std::ranges::find_if(resources_, [slug](const Resource& r) { return r.slug == slug; });
     if (it == resources_.end()) {
         return std::nullopt;
-}
+    }
     return *it;
 }
 
@@ -96,7 +131,7 @@ std::optional<Entity> Registry::find_entity(std::string_view slug) const {
     auto it = std::ranges::find_if(entities_, [slug](const Entity& e) { return e.slug == slug; });
     if (it == entities_.end()) {
         return std::nullopt;
-}
+    }
     return *it;
 }
 

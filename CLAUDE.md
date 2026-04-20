@@ -75,6 +75,8 @@ Read these files when relevant to your current task:
 - C++23 (GCC 13+, Clang 17+, MSVC latest) + nlohmann/json 3.11+, Catch2 v3.6+ (testing), spdlog 1.13+ (optional logging) — all via FetchContent (002-quantity-scaling-solver)
 - N/A (in-memory graph; no persistence changes in this feature) (002-quantity-scaling-solver)
 - C++23 (GCC 13+, Clang 17+, MSVC latest) + nlohmann/json 3.11+ (serialization), Catch2 v3.6+ (testing) (003-npk-soil-balance)
+- C++23 (GCC 13+, Clang 18+, MSVC latest) + nlohmann/json 3.11+ (serialization), Catch2 v3.6+ (testing) (004-composition-matching)
+- JSON files (default_registry.json, PlanResult serialization) (004-composition-matching)
 
 ## Recent Changes
 - 001-homestead-engine-core: Added C++23 (std::expected, concepts, ranges, std::span) + nlohmann/json 3.11+, Catch2 v3.6+, spdlog 1.13+ (optional)

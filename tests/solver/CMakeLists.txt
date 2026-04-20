@@ -8,6 +8,7 @@ add_executable(test_solver
     test_quickstart.cpp
     test_quantity_scaling.cpp
     test_nutrient_balance.cpp
+    test_composition_matching.cpp
 )
 
 target_compile_features(test_solver PRIVATE cxx_std_23)

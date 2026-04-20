@@ -20,16 +20,11 @@
                         4.0
                     ]
                 },
+                "composition_requirements": {
+                    "energy_kcal": 11600.0,
+                    "protein_g": 720.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            3.5,
-                            4.0,
-                            4.5
-                        ],
-                        "resource_slug": "poultry_feed_kg",
-                        "timing": 0.5
-                    },
                     {
                         "quantity_per_cycle": [
                             8.0,
@@ -116,16 +111,11 @@
                         2.0
                     ]
                 },
+                "composition_requirements": {
+                    "energy_kcal": 348.0,
+                    "protein_g": 21.6
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.1,
-                            0.12,
-                            0.14
-                        ],
-                        "resource_slug": "poultry_feed_kg",
-                        "timing": 0.5
-                    },
                     {
                         "quantity_per_cycle": [
                             0.2,
@@ -203,16 +193,11 @@
                         1.0
                     ]
                 },
+                "composition_requirements": {
+                    "energy_kcal": 81.2,
+                    "protein_g": 5.04
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.025,
-                            0.028,
-                            0.032
-                        ],
-                        "resource_slug": "poultry_feed_kg",
-                        "timing": 0.5
-                    },
                     {
                         "quantity_per_cycle": [
                             0.05,
@@ -638,16 +623,12 @@
                         0.5
                     ]
                 },
+                "fertilization_per_m2": {
+                    "K_g": 8.0,
+                    "N_g": 10.0,
+                    "P_g": 4.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.5,
-                            0.8,
-                            1.0
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             20.0,
@@ -722,16 +703,12 @@
                         1.0
                     ]
                 },
+                "fertilization_per_m2": {
+                    "K_g": 12.0,
+                    "N_g": 15.0,
+                    "P_g": 6.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            1.0,
-                            1.5,
-                            2.0
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             30.0,
@@ -806,16 +783,12 @@
                         1.0
                     ]
                 },
+                "fertilization_per_m2": {
+                    "K_g": 10.0,
+                    "N_g": 12.0,
+                    "P_g": 5.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.8,
-                            1.0,
-                            1.5
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             25.0,
@@ -890,16 +863,12 @@
                         0.5
                     ]
                 },
+                "fertilization_per_m2": {
+                    "K_g": 6.0,
+                    "N_g": 8.0,
+                    "P_g": 3.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.3,
-                            0.5,
-                            0.7
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             30.0,
@@ -1067,16 +1036,12 @@
                         0.5
                     ]
                 },
+                "fertilization_per_m2": {
+                    "K_g": 8.0,
+                    "N_g": 5.0,
+                    "P_g": 2.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.2,
-                            0.3,
-                            0.5
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             15.0,
@@ -1160,16 +1125,12 @@
                         1.0
                     ]
                 },
+                "composition_requirements": {
+                    "K_g": 200.0,
+                    "N_g": 120.0,
+                    "P_g": 40.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            1.0,
-                            2.0,
-                            3.0
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             80.0,
@@ -1238,16 +1199,12 @@
                         0.5
                     ]
                 },
+                "composition_requirements": {
+                    "K_g": 7.0,
+                    "N_g": 5.0,
+                    "P_g": 2.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.5,
-                            0.8,
-                            1.2
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             50.0,
@@ -1316,16 +1273,12 @@
                         0.5
                     ]
                 },
+                "composition_requirements": {
+                    "K_g": 4.0,
+                    "N_g": 3.3,
+                    "P_g": 1.5
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.3,
-                            0.5,
-                            0.8
-                        ],
-                        "resource_slug": "mature_compost_kg",
-                        "timing": 0.0
-                    },
                     {
                         "quantity_per_cycle": [
                             30.0,
@@ -1394,16 +1347,11 @@
                         4.0
                     ]
                 },
+                "composition_requirements": {
+                    "energy_kcal": 2700.0,
+                    "protein_g": 180.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            1.2,
-                            1.5,
-                            1.8
-                        ],
-                        "resource_slug": "goat_feed_kg",
-                        "timing": 0.5
-                    },
                     {
                         "quantity_per_cycle": [
                             3.0,
@@ -1490,16 +1438,11 @@
                         1.0
                     ]
                 },
+                "composition_requirements": {
+                    "energy_kcal": 900.0,
+                    "protein_g": 60.0
+                },
                 "inputs": [
-                    {
-                        "quantity_per_cycle": [
-                            0.4,
-                            0.5,
-                            0.6
-                        ],
-                        "resource_slug": "goat_feed_kg",
-                        "timing": 0.5
-                    },
                     {
                         "quantity_per_cycle": [
                             1.0,
@@ -1726,8 +1669,11 @@
             {
                 "category": 9,
                 "composition": {
+                    "K_g": 8.0,
                     "K_percent": 0.8,
+                    "N_g": 15.0,
                     "N_percent": 1.5,
+                    "P_g": 12.0,
                     "P_percent": 1.2
                 },
                 "name": "Chicken Manure",
@@ -1777,8 +1723,11 @@
             {
                 "category": 9,
                 "composition": {
+                    "K_g": 10.0,
                     "K_percent": 1.0,
+                    "N_g": 13.0,
                     "N_percent": 1.3,
+                    "P_g": 8.0,
                     "P_percent": 0.8
                 },
                 "name": "Goat Manure",
@@ -1821,7 +1770,9 @@
             {
                 "category": 2,
                 "composition": {
+                    "N_g": 0.03,
                     "N_ppm": 30.0,
+                    "P_g": 0.008,
                     "P_ppm": 8.0
                 },
                 "name": "Nutrient-Rich Tank Water",
@@ -1880,8 +1831,11 @@
             {
                 "category": 2,
                 "composition": {
+                    "K_g": 15.0,
                     "K_percent": 1.5,
+                    "N_g": 20.0,
                     "N_percent": 2.0,
+                    "P_g": 12.0,
                     "P_percent": 1.2
                 },
                 "name": "Vermicompost",
@@ -1941,7 +1895,9 @@
             {
                 "category": 2,
                 "composition": {
+                    "N_g": 0.8,
                     "N_ppm": 800.0,
+                    "P_g": 0.2,
                     "P_ppm": 200.0
                 },
                 "name": "Liquid Biofertilizer (digestate)",
@@ -2008,7 +1964,10 @@
             },
             {
                 "category": 3,
-                "composition": {},
+                "composition": {
+                    "energy_kcal": 3580.0,
+                    "protein_g": 93.0
+                },
                 "name": "Corn Grain",
                 "nutrition": {
                     "calories_kcal_per_kg": 3580.0,
@@ -2037,7 +1996,10 @@
             },
             {
                 "category": 3,
-                "composition": {},
+                "composition": {
+                    "energy_kcal": 3400.0,
+                    "protein_g": 220.0
+                },
                 "name": "Common Bean",
                 "nutrition": {
                     "calories_kcal_per_kg": 3400.0,
@@ -2066,7 +2028,10 @@
             },
             {
                 "category": 3,
-                "composition": {},
+                "composition": {
+                    "energy_kcal": 1590.0,
+                    "protein_g": 14.0
+                },
                 "name": "Cassava Root",
                 "nutrition": {
                     "calories_kcal_per_kg": 1590.0,
@@ -2084,7 +2049,10 @@
             },
             {
                 "category": 1,
-                "composition": {},
+                "composition": {
+                    "energy_kcal": 900.0,
+                    "protein_g": 200.0
+                },
                 "name": "Cassava Leaves",
                 "nutrition": {
                     "calories_kcal_per_kg": 900.0,
