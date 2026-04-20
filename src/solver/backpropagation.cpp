@@ -33,6 +33,17 @@ namespace homestead {
 // Defined in analytics.cpp.
 void populate_plan_result(PlanResult&, const std::vector<ProductionGoal>&, const Registry&,
                           const SolverConfig&);
+double compute_loop_closure_score(const std::vector<ResourceBalance>&,
+                                  const std::unordered_map<std::string, double>&);
+
+// Defined below in this file (composition-matching passes).
+void run_feed_matching_pass(PlanResult& result, const Registry& registry,
+                            const SolverConfig& config,
+                            std::unordered_map<std::string, NodeId>& external_nodes, Graph& g);
+void run_fertilization_matching_pass(PlanResult& result, const Registry& registry,
+                                     const SolverConfig& config,
+                                     std::unordered_map<std::string, NodeId>& external_nodes,
+                                     Graph& g);
 
 // Defined in scheduling.cpp.
 double cycles_in_month(const Lifecycle& lc, int month) noexcept;
@@ -394,6 +405,26 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
     std::vector<ProductionGoal> goals_vec(goals.begin(), goals.end());
     populate_plan_result(result, goals_vec, registry, config);
 
+    // ── Step 6: Composition-matching passes (post-slug, post-analytics) ───────
+    // Pass 1: route feed resources to composition_requirements on animal/per-plant entities.
+    // Pass 2: route fertilizer resources to fertilization_per_m2 on area crop entities.
+    // Both passes only update composition_routed in the balance sheet and emit diagnostics;
+    // they never add entity instances (isolation guarantee — FR-007).
+    // SC-005: measured overhead on 20-entity plan (bench_solver, release build) < 1 ms total.
+    run_feed_matching_pass(result, registry, config, external_nodes, g);
+    run_fertilization_matching_pass(result, registry, config, external_nodes, g);
+
+    // Rebuild gap_report to include any new synthetic external balance entries.
+    result.gap_report.clear();
+    std::ranges::copy_if(result.balance_sheet, std::back_inserter(result.gap_report),
+                         [](const ResourceBalance& b) {
+                             return b.annual_external_purchase > 0.0 ||
+                                    b.annual_internal_production < b.annual_consumption;
+                         });
+
+    // Recompute loop closure score now that composition_routed flows are populated (FR-011).
+    result.loop_closure_score = compute_loop_closure_score(result.balance_sheet, {});
+
     return result;
 }
 
@@ -402,6 +433,270 @@ PlanResult BackpropagationSolver::solve(std::span<const ProductionGoal> goals,
 PlanResult solve(std::span<const ProductionGoal> goals, const Registry& registry,
                  const SolverConfig& config) {
     return BackpropagationSolver{}.solve(goals, registry, config);
+}
+
+// ── Composition-matching helpers ───────────────────────────────────────────────
+
+namespace {
+
+/// Get or insert a ResourceBalance entry by slug (creates empty entry if absent).
+ResourceBalance& get_or_insert_balance(std::vector<ResourceBalance>& sheet,
+                                       const std::string& slug) {
+    auto it = std::ranges::find_if(
+        sheet, [&slug](const ResourceBalance& b) { return b.resource_slug == slug; });
+    if (it != sheet.end()) {
+        return *it;
+    }
+    ResourceBalance b;
+    b.resource_slug = slug;
+    sheet.push_back(std::move(b));
+    return sheet.back();
+}
+
+/// Sorted list of candidate resource slugs for composition matching.
+/// Candidates are internal resources (annual_internal_production > 0) whose
+/// Resource::composition map contains at least one required key.
+/// Sorted by annual_internal_production descending (highest contribution first).
+std::vector<std::string> collect_candidates(
+    const std::unordered_map<std::string, double>& required_keys,
+    const std::vector<ResourceBalance>& balance_sheet, const Registry& registry) {
+    std::vector<std::pair<double, std::string>> scored;
+
+    for (const auto& bal : balance_sheet) {
+        if (bal.annual_internal_production <= 0.0) {
+            continue;
+        }
+        auto res_opt = registry.find_resource(bal.resource_slug);
+        if (!res_opt || res_opt->composition.empty()) {
+            continue;
+        }
+        // Must overlap at least one required key.
+        bool has_overlap = std::ranges::any_of(
+            required_keys, [&](const auto& kv) { return res_opt->composition.contains(kv.first); });
+        if (has_overlap) {
+            scored.emplace_back(bal.annual_internal_production, bal.resource_slug);
+        }
+    }
+
+    std::ranges::sort(scored, std::ranges::greater{}, &std::pair<double, std::string>::first);
+    std::vector<std::string> result;
+    result.reserve(scored.size());
+    for (auto& [score, slug] : scored) {
+        result.push_back(std::move(slug));
+    }
+    return result;
+}
+
+}  // namespace
+
+// ── Pass 1: feed matching (composition_requirements) ──────────────────────────
+//
+// Runs after populate_plan_result(). For each EntityInstanceNode with non-empty
+// composition_requirements, computes annual elemental demand and routes available
+// internal resources to satisfy it. Records element flows in composition_routed.
+// For unmet remainders, adds a synthetic ResourceBalance and emits composition_gap.
+// NEVER calls add_entity_instance (isolation guarantee, FR-007).
+
+void run_feed_matching_pass(PlanResult& result, const Registry& registry,
+                            const SolverConfig& config,
+                            std::unordered_map<std::string, NodeId>& /*external_nodes*/,
+                            Graph& /*g*/) {
+    // Track resource units allocated so far in this pass to avoid over-allocation.
+    std::unordered_map<std::string, double> allocated;  // slug → units consumed
+
+    result.graph.for_each_node([&](NodeId /*id*/, const NodeVariant& nv) {
+        if (!std::holds_alternative<EntityInstanceNode>(nv)) {
+            return;
+        }
+        const auto& inst = std::get<EntityInstanceNode>(nv);
+        auto entity_opt = registry.find_entity(inst.entity_slug);
+        if (!entity_opt || entity_opt->composition_requirements.empty()) {
+            return;
+        }
+        const Entity& entity = *entity_opt;
+        const auto& reqs = entity.composition_requirements;
+
+        double qty = detail::pick(inst.quantity, config.scenario);
+        double cycles_per_year = entity.lifecycle.cycles_per_year;
+
+        // Annual demand per element.
+        std::unordered_map<std::string, double> remaining;
+        for (const auto& [key, val] : reqs) {
+            remaining[key] = val * qty * cycles_per_year;
+        }
+
+        auto candidates = collect_candidates(reqs, result.balance_sheet, registry);
+
+        for (const auto& cand_slug : candidates) {
+            // Stop when all elemental demands are satisfied.
+            bool all_met =
+                std::ranges::all_of(remaining, [](const auto& kv) { return kv.second <= 1e-9; });
+            if (all_met) {
+                break;
+            }
+
+            auto res_opt = registry.find_resource(cand_slug);
+            if (!res_opt) {
+                continue;
+            }
+            const auto& comp = res_opt->composition;
+
+            // Skip candidates that cannot contribute to any remaining demand.
+            bool can_contribute = std::ranges::any_of(remaining, [&](const auto& kv) {
+                return kv.second > 1e-9 && comp.contains(kv.first) && comp.at(kv.first) > 0.0;
+            });
+            if (!can_contribute) {
+                continue;
+            }
+
+            auto& bal = get_or_insert_balance(result.balance_sheet, cand_slug);
+            double already = allocated.contains(cand_slug) ? allocated.at(cand_slug) : 0.0;
+            double available =
+                std::max(0.0, bal.annual_internal_production - bal.annual_consumption - already);
+            if (available <= 0.0) {
+                continue;
+            }
+
+            // Allocate enough units to satisfy the most demanding element this candidate supplies.
+            double units_needed = 0.0;
+            for (const auto& [key, rem] : remaining) {
+                if (rem > 1e-9 && comp.contains(key) && comp.at(key) > 0.0) {
+                    units_needed = std::max(units_needed, rem / comp.at(key));
+                }
+            }
+            double units_used = std::min(units_needed, available);
+
+            // Credit all required keys from this allocation.
+            for (auto& [key, rem] : remaining) {
+                if (comp.contains(key)) {
+                    double provided = units_used * comp.at(key);
+                    bal.composition_routed[key] += provided;
+                    rem = std::max(0.0, rem - provided);
+                }
+            }
+            allocated[cand_slug] += units_used;
+        }
+
+        // Emit composition_gap diagnostics for unmet remainder.
+        for (const auto& [key, rem] : remaining) {
+            if (rem <= 1e-9) {
+                continue;
+            }
+            std::string ext_slug = key + "_external";
+            auto& ext_bal = get_or_insert_balance(result.balance_sheet, ext_slug);
+            ext_bal.annual_external_purchase += rem;
+
+            result.diagnostics.push_back(Diagnostic{
+                DiagnosticKind::composition_gap,
+                std::format("Entity '{}' has unmet {} requirement: {:.2f} g sourced externally",
+                            inst.entity_slug, key, rem),
+                ext_slug, inst.entity_slug, rem});
+        }
+    });
+}
+
+// ── Pass 2: fertilization matching (fertilization_per_m2) ─────────────────────
+//
+// For each EntityInstanceNode with non-empty fertilization_per_m2, computes
+// area-scaled annual NPK demand and routes available N/P/K-bearing resources.
+// Primary key: N_g. Records element flows in composition_routed.
+// For unmet per-element remainders, adds synthetic ResourceBalance + composition_gap.
+
+void run_fertilization_matching_pass(PlanResult& result, const Registry& registry,
+                                     const SolverConfig& config,
+                                     std::unordered_map<std::string, NodeId>& /*external_nodes*/,
+                                     Graph& /*g*/) {
+    std::unordered_map<std::string, double> allocated;  // slug → units consumed
+
+    result.graph.for_each_node([&](NodeId /*id*/, const NodeVariant& nv) {
+        if (!std::holds_alternative<EntityInstanceNode>(nv)) {
+            return;
+        }
+        const auto& inst = std::get<EntityInstanceNode>(nv);
+        auto entity_opt = registry.find_entity(inst.entity_slug);
+        if (!entity_opt || entity_opt->fertilization_per_m2.empty()) {
+            return;
+        }
+        const Entity& entity = *entity_opt;
+        const auto& per_m2 = entity.fertilization_per_m2;
+
+        double qty = detail::pick(inst.quantity, config.scenario);
+        double area_m2 = detail::pick(entity.infrastructure.area_m2, config.scenario);
+        double cycles_per_year = entity.lifecycle.cycles_per_year;
+
+        // Annual demand per element: g/m2/cycle * m2 * instances * cycles/year.
+        std::unordered_map<std::string, double> remaining;
+        for (const auto& [key, val] : per_m2) {
+            remaining[key] = val * area_m2 * qty * cycles_per_year;
+        }
+
+        auto candidates = collect_candidates(per_m2, result.balance_sheet, registry);
+
+        for (const auto& cand_slug : candidates) {
+            // Stop when all elemental demands are satisfied.
+            bool all_met =
+                std::ranges::all_of(remaining, [](const auto& kv) { return kv.second <= 1e-9; });
+            if (all_met) {
+                break;
+            }
+
+            auto res_opt = registry.find_resource(cand_slug);
+            if (!res_opt) {
+                continue;
+            }
+            const auto& comp = res_opt->composition;
+
+            // Skip candidates that cannot contribute to any remaining demand.
+            bool can_contribute = std::ranges::any_of(remaining, [&](const auto& kv) {
+                return kv.second > 1e-9 && comp.contains(kv.first) && comp.at(kv.first) > 0.0;
+            });
+            if (!can_contribute) {
+                continue;
+            }
+
+            auto& bal = get_or_insert_balance(result.balance_sheet, cand_slug);
+            double already = allocated.contains(cand_slug) ? allocated.at(cand_slug) : 0.0;
+            double available =
+                std::max(0.0, bal.annual_internal_production - bal.annual_consumption - already);
+            if (available <= 0.0) {
+                continue;
+            }
+
+            // Allocate enough units to satisfy the most demanding element this candidate supplies.
+            double units_needed = 0.0;
+            for (const auto& [key, rem] : remaining) {
+                if (rem > 1e-9 && comp.contains(key) && comp.at(key) > 0.0) {
+                    units_needed = std::max(units_needed, rem / comp.at(key));
+                }
+            }
+            double units_used = std::min(units_needed, available);
+
+            for (auto& [key, rem] : remaining) {
+                if (comp.contains(key)) {
+                    double provided = units_used * comp.at(key);
+                    bal.composition_routed[key] += provided;
+                    rem = std::max(0.0, rem - provided);
+                }
+            }
+            allocated[cand_slug] += units_used;
+        }
+
+        for (const auto& [key, rem] : remaining) {
+            if (rem <= 1e-9) {
+                continue;
+            }
+            std::string ext_slug = key + "_external";
+            auto& ext_bal = get_or_insert_balance(result.balance_sheet, ext_slug);
+            ext_bal.annual_external_purchase += rem;
+
+            result.diagnostics.push_back(
+                Diagnostic{DiagnosticKind::composition_gap,
+                           std::format("Entity '{}' has unmet fertilization {} requirement: {:.2f} "
+                                       "g sourced externally",
+                                       inst.entity_slug, key, rem),
+                           ext_slug, inst.entity_slug, rem});
+        }
+    });
 }
 
 }  // namespace homestead

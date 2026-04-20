@@ -178,6 +178,12 @@ json entity_to_json(const Entity& e) {
         j["nutrient_demand"]["p_g_per_m2_per_cycle"] = nd.p_g_per_m2_per_cycle;
         j["nutrient_demand"]["k_g_per_m2_per_cycle"] = nd.k_g_per_m2_per_cycle;
     }
+    if (!e.composition_requirements.empty()) {
+        j["composition_requirements"] = e.composition_requirements;
+    }
+    if (!e.fertilization_per_m2.empty()) {
+        j["fertilization_per_m2"] = e.fertilization_per_m2;
+    }
     return j;
 }
 
@@ -287,6 +293,17 @@ std::expected<Entity, std::string> entity_from_json(const json& j) {
         nd.p_g_per_m2_per_cycle = ndj.value("p_g_per_m2_per_cycle", 0.0);
         nd.k_g_per_m2_per_cycle = ndj.value("k_g_per_m2_per_cycle", 0.0);
         e.nutrient_demand = nd;
+    }
+    // Absent key → empty map (backward compat with pre-1.2.0 registry files).
+    if (j.contains("composition_requirements") && j["composition_requirements"].is_object()) {
+        for (const auto& [k, v] : j["composition_requirements"].items()) {
+            e.composition_requirements[k] = v.get<double>();
+        }
+    }
+    if (j.contains("fertilization_per_m2") && j["fertilization_per_m2"].is_object()) {
+        for (const auto& [k, v] : j["fertilization_per_m2"].items()) {
+            e.fertilization_per_m2[k] = v.get<double>();
+        }
     }
     return e;
 }
@@ -509,6 +526,9 @@ json to_json(const PlanResult& plan) {
         bj["annual_internal_production"] = b.annual_internal_production;
         bj["annual_consumption"] = b.annual_consumption;
         bj["annual_external_purchase"] = b.annual_external_purchase;
+        if (!b.composition_routed.empty()) {
+            bj["composition_routed"] = b.composition_routed;
+        }
         data["balance_sheet"].push_back(bj);
     }
 
@@ -530,6 +550,9 @@ json to_json(const PlanResult& plan) {
         }
         if (d.entity_slug) {
             dj["entity_slug"] = *d.entity_slug;
+        }
+        if (d.shortfall_g) {
+            dj["shortfall_g"] = *d.shortfall_g;
         }
         data["diagnostics"].push_back(dj);
     }
@@ -594,6 +617,12 @@ std::expected<PlanResult, std::string> plan_from_json(const json& j) {
             b.annual_internal_production = bj.value("annual_internal_production", 0.0);
             b.annual_consumption = bj.value("annual_consumption", 0.0);
             b.annual_external_purchase = bj.value("annual_external_purchase", 0.0);
+            // Absent key → empty map (backward compat with pre-1.2.0 plan files).
+            if (bj.contains("composition_routed") && bj["composition_routed"].is_object()) {
+                for (const auto& [k, v] : bj["composition_routed"].items()) {
+                    b.composition_routed[k] = v.get<double>();
+                }
+            }
             plan.balance_sheet.push_back(b);
         }
     }
@@ -621,6 +650,9 @@ std::expected<PlanResult, std::string> plan_from_json(const json& j) {
             }
             if (dj.contains("entity_slug") && dj["entity_slug"].is_string()) {
                 d.entity_slug = dj["entity_slug"].get<std::string>();
+            }
+            if (dj.contains("shortfall_g") && dj["shortfall_g"].is_number()) {
+                d.shortfall_g = dj["shortfall_g"].get<double>();
             }
             plan.diagnostics.push_back(d);
         }

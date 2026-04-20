@@ -16,6 +16,8 @@ std::string to_string(DiagnosticKind kind) {
             return "seasonality_gap";
         case DiagnosticKind::nutrient_deficit:
             return "nutrient_deficit";
+        case DiagnosticKind::composition_gap:
+            return "composition_gap";
     }
     return "unknown";
 }

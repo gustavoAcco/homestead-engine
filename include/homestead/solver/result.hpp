@@ -5,6 +5,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,10 @@ struct ResourceBalance {
     double annual_internal_production{};
     double annual_consumption{};
     double annual_external_purchase{};
+    /// Grams of each chemical element routed through this resource by the composition-
+    /// matching passes. Keys: "protein_g", "energy_kcal", "N_g", "P_g", "K_g", etc.
+    /// Empty when no composition matching was performed (FR-010, schema 1.2.0).
+    std::unordered_map<std::string, double> composition_routed;
 };
 
 /// Classification of solver diagnostic messages.
@@ -36,7 +41,8 @@ enum class DiagnosticKind {
     non_convergent_cycle,  ///< Fixed-point did not converge within iteration limit
     missing_producer,      ///< No registry entity produces a required resource
     seasonality_gap,       ///< Goal resource unavailable in one or more goal months
-    nutrient_deficit       ///< N, P, or K demand exceeds available supply in a month
+    nutrient_deficit,      ///< N, P, or K demand exceeds available supply in a month
+    composition_gap        ///< Elemental requirement partially or fully unmet internally
 };
 
 /// Returns a human-readable label for a DiagnosticKind.
@@ -60,10 +66,14 @@ struct Diagnostic {
     DiagnosticKind kind;
     /// Human-readable description.
     std::string message;
-    /// Affected resource slug, if applicable.
+    /// Affected resource slug, if applicable. For composition_gap diagnostics this is
+    /// the synthetic external-source slug, e.g. "protein_g_external", "K_g_external".
     std::optional<std::string> resource_slug;
     /// Affected entity slug, if applicable.
     std::optional<std::string> entity_slug;
+    /// Unmet elemental shortfall in grams (composition_gap diagnostics only).
+    /// nullopt for all other diagnostic kinds.
+    std::optional<double> shortfall_g;
 };
 
 /// Bill of materials for all infrastructure in the plan.

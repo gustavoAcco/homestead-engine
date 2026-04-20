@@ -325,10 +325,31 @@ double compute_loop_closure_score(const std::vector<ResourceBalance>& balance_sh
         internal_supply += w * std::min(bal.annual_internal_production, demand);
     }
 
+    // Include gram-based composition-matched internal flows (FR-011).
+    // energy_kcal is excluded to avoid incommensurable unit aggregation (kcal vs grams).
+    // Synthetic external slugs (ending in "_external") are excluded.
+    for (const auto& bal : balance_sheet) {
+        if (bal.composition_routed.empty()) {
+            continue;
+        }
+        for (const auto& [key, grams] : bal.composition_routed) {
+            if (key == "energy_kcal") {
+                continue;  // excluded: incommensurable with grams
+            }
+            if (grams <= 0.0) {
+                continue;
+            }
+            // Each gram routed internally contributes: supply = grams, demand = grams.
+            // Weight defaults to 1.0 for composition flows (no per-element weights yet).
+            total_demand += grams;
+            internal_supply += grams;
+        }
+    }
+
     if (total_demand <= 0.0) {
         return 0.0;
     }
-    return internal_supply / total_demand;
+    return std::min(1.0, internal_supply / total_demand);
 }
 
 // ── Public entry point: populate PlanResult after graph is resolved ───────────

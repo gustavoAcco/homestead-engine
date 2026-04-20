@@ -183,6 +183,157 @@ TEST_CASE("Entity nutrient_demand round-trip: nullopt not serialized",
     REQUIRE_FALSE(nc->nutrient_demand.has_value());
 }
 
+// ── composition_requirements / fertilization_per_m2 round-trip (T008) ───────
+
+TEST_CASE("Entity composition_requirements round-trip: values preserved",
+          "[serialization][roundtrip][composition]") {
+    Registry reg;
+
+    Resource r;
+    r.slug = "animal_out_kg";
+    r.name = "Animal Output";
+    r.category = ResourceCategory::food_product;
+    r.physical = PhysicalProperties{1.0, 0.0, -1};
+    (void)reg.register_resource(r);
+
+    Entity e;
+    e.slug = "test_animal";
+    e.name = "Test Animal";
+    e.lifecycle = Lifecycle{0, 60, 6.0, ALL_MONTHS};
+    e.outputs = {ResourceFlowSpec{"animal_out_kg", VariableQuantity{2.0}, 1.0}};
+    e.infrastructure.area_m2 = VariableQuantity{1.0};
+    e.composition_requirements["protein_g"] = 720.0;
+    e.composition_requirements["energy_kcal"] = 11600.0;
+    (void)reg.register_entity(e);
+
+    auto j = to_json(reg);
+    auto restored = registry_from_json(j);
+    REQUIRE(restored.has_value());
+
+    auto animal = restored->find_entity("test_animal");
+    REQUIRE(animal.has_value());
+    REQUIRE(animal->composition_requirements.size() == 2);
+    REQUIRE(animal->composition_requirements.at("protein_g") == 720.0);
+    REQUIRE(animal->composition_requirements.at("energy_kcal") == 11600.0);
+    REQUIRE(animal->fertilization_per_m2.empty());
+}
+
+TEST_CASE("Entity fertilization_per_m2 round-trip: values preserved",
+          "[serialization][roundtrip][composition]") {
+    Registry reg;
+
+    Resource r;
+    r.slug = "crop_out_rt";
+    r.name = "Crop Output RT";
+    r.category = ResourceCategory::food_product;
+    r.physical = PhysicalProperties{1.0, 0.0, -1};
+    (void)reg.register_resource(r);
+
+    Entity e;
+    e.slug = "test_crop_fert";
+    e.name = "Test Crop Fert";
+    e.lifecycle = Lifecycle{0, 45, 8.0, ALL_MONTHS};
+    e.outputs = {ResourceFlowSpec{"crop_out_rt", VariableQuantity{8.0}, 1.0}};
+    e.infrastructure.area_m2 = VariableQuantity{1.0};
+    e.fertilization_per_m2["N_g"] = 10.0;
+    e.fertilization_per_m2["P_g"] = 4.0;
+    e.fertilization_per_m2["K_g"] = 8.0;
+    (void)reg.register_entity(e);
+
+    auto j = to_json(reg);
+    auto restored = registry_from_json(j);
+    REQUIRE(restored.has_value());
+
+    auto crop = restored->find_entity("test_crop_fert");
+    REQUIRE(crop.has_value());
+    REQUIRE(crop->fertilization_per_m2.size() == 3);
+    REQUIRE(crop->fertilization_per_m2.at("N_g") == 10.0);
+    REQUIRE(crop->fertilization_per_m2.at("P_g") == 4.0);
+    REQUIRE(crop->fertilization_per_m2.at("K_g") == 8.0);
+    REQUIRE(crop->composition_requirements.empty());
+}
+
+TEST_CASE("Entity absent composition fields deserialize to empty maps (backward compat)",
+          "[serialization][roundtrip][composition]") {
+    // A JSON entity with no composition_requirements or fertilization_per_m2 keys
+    // (old registry format) must deserialize with both maps empty.
+    Registry reg = Registry::load_defaults();
+    auto j = to_json(reg);
+
+    // Strip the new fields from the first entity in JSON to simulate an old file.
+    auto& entities = j["data"]["entities"];
+    REQUIRE(!entities.empty());
+    entities[0].erase("composition_requirements");
+    entities[0].erase("fertilization_per_m2");
+
+    auto restored = registry_from_json(j);
+    REQUIRE(restored.has_value());
+
+    // The first entity must still deserialize without error and have empty maps.
+    const auto& first_entity = restored->entities()[0];
+    REQUIRE(first_entity.composition_requirements.empty());
+    REQUIRE(first_entity.fertilization_per_m2.empty());
+}
+
+TEST_CASE("ResourceBalance composition_routed round-trip: values preserved",
+          "[serialization][roundtrip][composition]") {
+    PlanResult plan;
+    ResourceBalance b;
+    b.resource_slug = "corn_grain_kg";
+    b.composition_routed["protein_g"] = 186.0;
+    b.composition_routed["energy_kcal"] = 7160.0;
+    plan.balance_sheet.push_back(b);
+
+    auto j = to_json(plan);
+    auto restored = plan_from_json(j);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->balance_sheet.size() == 1);
+
+    const auto& rb = restored->balance_sheet[0];
+    REQUIRE(rb.composition_routed.size() == 2);
+    REQUIRE(rb.composition_routed.at("protein_g") == 186.0);
+    REQUIRE(rb.composition_routed.at("energy_kcal") == 7160.0);
+}
+
+TEST_CASE("ResourceBalance absent composition_routed deserializes to empty map",
+          "[serialization][roundtrip][composition]") {
+    PlanResult plan;
+    ResourceBalance b;
+    b.resource_slug = "tilapia_whole_kg";
+    // composition_routed left empty — pre-1.2.0 plan file
+    plan.balance_sheet.push_back(b);
+
+    auto j = to_json(plan);
+    // Remove the key to simulate old file (it won't be present because empty maps are omitted)
+    REQUIRE_FALSE(j["data"]["balance_sheet"][0].contains("composition_routed"));
+
+    auto restored = plan_from_json(j);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->balance_sheet[0].composition_routed.empty());
+}
+
+TEST_CASE("Diagnostic shortfall_g round-trip: set value preserved",
+          "[serialization][roundtrip][composition]") {
+    PlanResult plan;
+    Diagnostic d;
+    d.kind = DiagnosticKind::composition_gap;
+    d.message = "K shortfall for corn_plot_1m2";
+    d.resource_slug = "K_g_external";
+    d.entity_slug = "corn_plot_1m2";
+    d.shortfall_g = 6.0;
+    plan.diagnostics.push_back(d);
+
+    auto j = to_json(plan);
+    auto restored = plan_from_json(j);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->diagnostics.size() == 1);
+
+    const auto& rd = restored->diagnostics[0];
+    REQUIRE(rd.kind == DiagnosticKind::composition_gap);
+    REQUIRE(rd.shortfall_g.has_value());
+    REQUIRE(*rd.shortfall_g == 6.0);
+}
+
 // ── PlanResult::nutrient_balance round-trip (T025) ────────────────────────────
 
 TEST_CASE("PlanResult nutrient_balance round-trip: non-trivial values lossless",
